@@ -1,0 +1,14 @@
+#pragma once
+
+#define BOTH_SHIFTS_TURNS_ON_CAPS_WORD
+#define CAPS_WORD_INVERT_ON_SHIFT
+
+// 1337 gamer mode
+#define USB_POLLING_INTERVAL_MS 1
+
+#define SELECT_WORD_TIMEOUT 5000
+
+#define TAPPING_TERM 170
+#define PERMISSIVE_HOLD
+#define QUICK_TAP_TERM 0
+#define ACHORDION_STREAK

@@ -1,1 +1,1 @@
-enum Layers { BASE, NAV, SYM, NUM, WORKSPACE_NAV };
+enum Layers { BASE, NAV, NUM, SYM, WORKSPACE_NAV };

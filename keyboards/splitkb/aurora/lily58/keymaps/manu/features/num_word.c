@@ -36,7 +36,6 @@ __attribute__((weak)) bool num_word_press_user(uint16_t keycode, const keyrecord
             // Keycodes which should not disable num word mode.
             case KC_1 ... KC_0:
             case CM_EQL:
-            case CM_SCLN:
             case CM_MINS:
             case CM_DOT:
 
@@ -75,9 +74,10 @@ bool process_num_word(uint16_t keycode, const keyrecord_t *record, uint16_t togg
         if (record->event.pressed) {
             // Get the base keycode of a mod or layer tap key
             switch (keycode) {
+                case QK_MOMENTARY ... QK_MOMENTARY_MAX:
+                case QK_TAP_DANCE ... QK_TAP_DANCE_MAX:
                 case QK_MOD_TAP ... QK_MOD_TAP_MAX:
                 case QK_LAYER_TAP ... QK_LAYER_TAP_MAX:
-                case QK_TAP_DANCE ... QK_TAP_DANCE_MAX:
 #ifndef NO_ACTION_TAPPING
                     // Earlier return if this has not been considered tapped yet
                     if (record->tap.count == 0) return true;

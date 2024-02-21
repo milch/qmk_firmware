@@ -1,9 +1,11 @@
 #include "debug.h"
+#include "info_config.h"
 #include "keyboard.h"
 #include "keycodes.h"
 #include "keymap_colemak.h"
 #include "keymap_us.h"
 #include "modifiers.h"
+#include "process_tap_dance.h"
 #include "quantum.h"
 #include "quantum_keycodes.h"
 #include QMK_KEYBOARD_H
@@ -13,6 +15,7 @@
 #include "features/achordion.h"
 #include "features/magic_paren.h"
 #include "features/num_word.h"
+#include "features/tap_dance.h"
 
 void matrix_scan_user() {
     achordion_task();
@@ -35,16 +38,30 @@ enum custom_keycodes {
 #define HOME_D LALT_T(KC_D)
 #define HOME_F LGUI_T(KC_F)
 
+#define CM_H_A HOME_A
+#define CM_H_R HOME_S
+#define CM_H_S HOME_D
+#define CM_H_T HOME_F
+
 #define HOME_J LGUI_T(KC_J)
 #define HOME_K LALT_T(KC_K)
 #define HOME_L LCTL_T(KC_L)
 #define HOME_SC LSFT_T(KC_SCLN)
+
+#define CM_H_N HOME_J
+#define CM_H_E HOME_K
+#define CM_H_I HOME_L
+#define CM_H_O HOME_SC
 
 #define HOME_Z LT(NUM, KC_Z)
 #define HOME_SLSH LT(NUM, KC_SLSH)
 
 #define THUMB_SPC LT(NAV, KC_SPACE)
 #define THUMB_ENT LT(NAV, KC_ENTER)
+#define THUMB_REP TD(LT_SYM_REP)
+#define THUMB_AREP TD(LT_SYM_AREP)
+
+#include "g/keymap_combo.h"
 
 #define HYPER_0 LCAG(KC_0)
 #define HYPER_1 LCAG(KC_1)
@@ -56,6 +73,13 @@ enum custom_keycodes {
 #define HYPER_7 LCAG(KC_7)
 #define HYPER_8 LCAG(KC_8)
 #define HYPER_9 LCAG(KC_9)
+
+// clang-format off
+tap_dance_action_t tap_dance_actions[] = {
+    [LT_SYM_REP]  = ACTION_TAP_DANCE_LT(SYM, QK_REP),
+    [LT_SYM_AREP] = ACTION_TAP_DANCE_LT(SYM, QK_AREP),
+};
+// clang-format on
 
 bool is_thumb_key(keypos_t pos) {
     return (pos.row == 4 && pos.col == 5) || (pos.row == 9 && pos.col == 5);
@@ -69,6 +93,8 @@ uint16_t achordion_timeout(uint16_t keycode) {
     switch (keycode) {
         case THUMB_ENT:
         case THUMB_SPC:
+        case THUMB_REP:
+        case THUMB_AREP:
             return 0;
     }
 
@@ -105,10 +131,33 @@ static uint8_t find_alt_keycode(const uint8_t (*table)[2], uint8_t table_size_by
     return KC_NO;
 }
 
+uint16_t get_colemak_bigram(uint16_t other_keycode) {
+    switch (other_keycode) {
+        case CM_D:
+            return CM_G;
+        case CM_E:
+            return CM_U;
+        case CM_G:
+            return CM_T;
+        case CM_H:
+            return CM_L;
+        case CM_N:
+            return CM_K;
+        case CM_P:
+            return CM_T;
+        case CM_S:
+            return CM_C;
+        case CM_U:
+            return CM_E;
+    }
+
+    return KC_NO;
+}
+
 // This is adapted from the core implementation, just changing KC to CM
 uint16_t get_alt_repeat_key_keycode_user(uint16_t keycode, uint8_t mods) {
     uint16_t alt_keycode = 0;
-    if (IS_QK_BASIC(keycode)) {
+    if (IS_QK_BASIC(QK_MOD_TAP_GET_TAP_KEYCODE(keycode))) {
         if ((mods & (MOD_LCTL | MOD_LALT | MOD_LGUI))) {
             // The last key was pressed with a modifier other than Shift.
             // The following maps
@@ -120,6 +169,7 @@ uint16_t get_alt_repeat_key_keycode_user(uint16_t keycode, uint8_t mods) {
                 {CM_N, CM_P}, // Next / Previous.
                 {CM_A, CM_E}, // Home / End.
                 {CM_O, CM_I}, // Older / Newer in Vim jump list.
+                {CM_D, CM_U}, // Down / Up.
             };
             alt_keycode = find_alt_keycode(pairs, sizeof(pairs), keycode);
         } else {
@@ -130,16 +180,17 @@ uint16_t get_alt_repeat_key_keycode_user(uint16_t keycode, uint8_t mods) {
                 {CM_H, CM_L}, // Left / Right.
                 // These two lines map W and E to B, and B to W.
                 {CM_W, CM_B}, // Forward / Backward by word.
-                {CM_E, CM_B}, // Forward / Backward by word.
                 {CM_S, CM_T}, // Forward / Backward history in SurfingKeys
             };
             alt_keycode = find_alt_keycode(pairs, sizeof(pairs), keycode);
+            if (!alt_keycode) {
+                alt_keycode = get_colemak_bigram(keycode);
+            }
         }
 
         if (!alt_keycode) {
             static const uint8_t pairs[][2] PROGMEM = {
                 {CM_LBRC, CM_RBRC}, // Brackets
-                {CM_D, CM_U},       // Down / Up.
             };
             // The following key pairs are considered with any mods.
             alt_keycode = find_alt_keycode(pairs, sizeof(pairs), keycode);
@@ -151,7 +202,7 @@ uint16_t get_alt_repeat_key_keycode_user(uint16_t keycode, uint8_t mods) {
         }
     }
 
-    return KC_TRNS; // Defer to default definitions.
+    return KC_TRANSPARENT; // Default implementation
 }
 
 bool caps_word_press_user(uint16_t keycode) {
@@ -191,6 +242,8 @@ bool caps_word_press_user(uint16_t keycode) {
         case KC_DEL:
         case CM_MINS:
         case CM_UNDS:
+        case THUMB_REP:
+        case THUMB_AREP:
             return true;
 
         // Deactivate Caps Word.
@@ -281,23 +334,23 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
 
 // clang-format off
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
-//    ┌─────────┬────────┬────────┬────────┬───────────────────┬─────────┐                           ┌─────────┬────────┬─────────┬────────┬───────────┬─────────┐
-//    │    `    │   1    │   2    │   3    │         4         │    5    │                           │    6    │   7    │    8    │   9    │     0     │    =    │
-//    ├─────────┼────────┼────────┼────────┼───────────────────┼─────────┤                           ├─────────┼────────┼─────────┼────────┼───────────┼─────────┤
-//    │   tab   │   q    │   w    │   e    │         r         │    t    │                           │    y    │   u    │    i    │   o    │     p     │    -    │
-//    ├─────────┼────────┼────────┼────────┼───────────────────┼─────────┤                           ├─────────┼────────┼─────────┼────────┼───────────┼─────────┤
-//    │   esc   │ HOME_A │ HOME_S │ HOME_D │      HOME_F       │    g    │                           │    h    │ HOME_J │ HOME_K  │ HOME_L │  HOME_SC  │    '    │
-//    ├─────────┼────────┼────────┼────────┼───────────────────┼─────────┼───────────┐   ┌───────────┼─────────┼────────┼─────────┼────────┼───────────┼─────────┤
-//    │ CW_TOGG │ HOME_Z │   x    │   c    │         v         │    b    │     [     │   │     ]     │    n    │   m    │    ,    │   .    │ HOME_SLSH │ NW_TOGG │
-//    └─────────┴────────┴────────┼────────┼───────────────────┼─────────┼───────────┤   ├───────────┼─────────┼────────┼─────────┼────────┴───────────┴─────────┘
-//                                │ QK_REP │ MO(WORKSPACE_NAV) │ MO(SYM) │ THUMB_SPC │   │ THUMB_ENT │ MO(SYM) │  bspc  │ QK_AREP │
-//                                └────────┴───────────────────┴─────────┴───────────┘   └───────────┴─────────┴────────┴─────────┘
+//    ┌─────────┬────────┬────────┬────────┬───────────────────┬───────────┐                           ┌────────────┬────────┬─────────┬────────┬───────────┬─────────┐
+//    │    `    │   1    │   2    │   3    │         4         │     5     │                           │     6      │   7    │    8    │   9    │     0     │    =    │
+//    ├─────────┼────────┼────────┼────────┼───────────────────┼───────────┤                           ├────────────┼────────┼─────────┼────────┼───────────┼─────────┤
+//    │   tab   │   q    │   w    │   e    │         r         │     t     │                           │     y      │   u    │    i    │   o    │     p     │    -    │
+//    ├─────────┼────────┼────────┼────────┼───────────────────┼───────────┤                           ├────────────┼────────┼─────────┼────────┼───────────┼─────────┤
+//    │   esc   │ HOME_A │ HOME_S │ HOME_D │      HOME_F       │     g     │                           │     h      │ HOME_J │ HOME_K  │ HOME_L │  HOME_SC  │    '    │
+//    ├─────────┼────────┼────────┼────────┼───────────────────┼───────────┼───────────┐   ┌───────────┼────────────┼────────┼─────────┼────────┼───────────┼─────────┤
+//    │ CW_TOGG │ HOME_Z │   x    │   c    │         v         │     b     │     [     │   │     ]     │     n      │   m    │    ,    │   .    │ HOME_SLSH │ NW_TOGG │
+//    └─────────┴────────┴────────┼────────┼───────────────────┼───────────┼───────────┤   ├───────────┼────────────┼────────┼─────────┼────────┴───────────┴─────────┘
+//                                │ QK_REP │ MO(WORKSPACE_NAV) │ THUMB_REP │ THUMB_SPC │   │ THUMB_ENT │ THUMB_AREP │  bspc  │ QK_AREP │
+//                                └────────┴───────────────────┴───────────┴───────────┘   └───────────┴────────────┴────────┴─────────┘
 [BASE] = LAYOUT(
-  KC_GRV  , KC_1   , KC_2   , KC_3   , KC_4              , KC_5    ,                             KC_6    , KC_7    , KC_8    , KC_9   , KC_0      , KC_EQL ,
-  KC_TAB  , KC_Q   , KC_W   , KC_E   , KC_R              , KC_T    ,                             KC_Y    , KC_U    , KC_I    , KC_O   , KC_P      , KC_MINS,
-  KC_ESC  , HOME_A , HOME_S , HOME_D , HOME_F            , KC_G    ,                             KC_H    , HOME_J  , HOME_K  , HOME_L , HOME_SC   , KC_QUOT,
-  CW_TOGG , HOME_Z , KC_X   , KC_C   , KC_V              , KC_B    , KC_LBRC   ,     KC_RBRC   , KC_N    , KC_M    , KC_COMM , KC_DOT , HOME_SLSH , NW_TOGG,
-                              QK_REP , MO(WORKSPACE_NAV) , MO(SYM) , THUMB_SPC ,     THUMB_ENT , MO(SYM) , KC_BSPC , QK_AREP
+  KC_GRV  , KC_1   , KC_2   , KC_3   , KC_4              , KC_5      ,                             KC_6       , KC_7    , KC_8    , KC_9   , KC_0      , KC_EQL ,
+  KC_TAB  , KC_Q   , KC_W   , KC_E   , KC_R              , KC_T      ,                             KC_Y       , KC_U    , KC_I    , KC_O   , KC_P      , KC_MINS,
+  KC_ESC  , HOME_A , HOME_S , HOME_D , HOME_F            , KC_G      ,                             KC_H       , HOME_J  , HOME_K  , HOME_L , HOME_SC   , KC_QUOT,
+  CW_TOGG , HOME_Z , KC_X   , KC_C   , KC_V              , KC_B      , KC_LBRC   ,     KC_RBRC   , KC_N       , KC_M    , KC_COMM , KC_DOT , HOME_SLSH , NW_TOGG,
+                              QK_REP , MO(WORKSPACE_NAV) , THUMB_REP , THUMB_SPC ,     THUMB_ENT , THUMB_AREP , KC_BSPC , QK_AREP
 ),
 
 //    ┌─────────┬──────┬─────────────┬──────┬──────┬─────┐                                             ┌──────┬──────┬──────┬──────┬──────┬──────┐

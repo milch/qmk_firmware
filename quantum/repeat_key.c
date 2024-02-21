@@ -34,6 +34,10 @@ uint8_t get_last_mods(void) {
     return last_mods;
 }
 
+keyrecord_t* get_last_record(void) {
+    return &last_record;
+}
+
 void set_last_keycode(uint16_t keycode) {
     set_last_record(keycode, &(keyrecord_t){
 #ifndef NO_ACTION_TAPPING
